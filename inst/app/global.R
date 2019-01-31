@@ -93,12 +93,18 @@ init_data <- function(env = r_data) {
   ## that needs to be reactive
   r_info <- reactiveValues()
 
-  df_names <- getOption("radiant.init.data", default = c("diamonds", "titanic"))
+  #df_names <- getOption("radiant.init.data", default = c("diamonds", "titanic"))
+  df_names <- dir(path = "./data", pattern = "(.*?).csv")
+
   for (dn in df_names) {
-    if (file.exists(dn)) {
-      df <- load(dn) %>% get()
-      dn <- basename(dn) %>%
-        {gsub(paste0(".", tools::file_ext(.)), "", ., fixed = TRUE)}
+    f <- paste0("./data/", dn)
+
+    if (file.exists(f)) {
+      #df <- load(dn) %>% get()
+      df <- read.csv(file = f, head = TRUE, sep = ",")
+      #dn <- basename(dn) %>%
+      #  {gsub(paste0(".", tools::file_ext(.)), "", ., fixed = TRUE)}
+      dn <- basename(f)
     } else {
       df <- data(list = dn, package = "radiant.data", envir = environment()) %>% get()
       r_info[[paste0(dn, "_lcmd")]] <- glue::glue('{dn} <- data({dn}, package = "radiant.data", envir = environment()) %>% get()\nregister("{dn}")')
