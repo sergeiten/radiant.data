@@ -94,7 +94,8 @@ init_data <- function(env = r_data) {
   r_info <- reactiveValues()
 
   #df_names <- getOption("radiant.init.data", default = c("diamonds", "titanic"))
-  df_names <- dir(path = "./data", pattern = "(.*?).csv")
+  #df_names <- dir(path = "./data", pattern = "(.*?).csv")
+  df_names <- getOption("radiant.init.data", default = c("diamonds", "titanic", "data3", "HN16_17_all_org_analysis11", "data_3_new", "DEP0_p4_LD"))
 
   for (dn in df_names) {
     f <- paste0("./data/", dn)
