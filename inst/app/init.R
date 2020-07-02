@@ -8,23 +8,28 @@
 # options(shiny.error = recover)
 # options(warn = 2)
 
-if (getOption("radiant.shinyFiles", FALSE)) {
+if (isTRUE(getOption("radiant.shinyFiles", FALSE))) {
   if (isTRUE(Sys.getenv("RSTUDIO") == "") && isTRUE(Sys.getenv("SHINY_PORT") != "")) {
     ## Users not on Rstudio will only get access to pre-specified volumes
     sf_volumes <- getOption("radiant.sf_volumes", "")
   } else {
-    sf_volumes <- getOption("radiant.launch_dir")
-    if (getOption("radiant.project_dir", "") != "") {
-      sf_volumes <- unique(getOption("radiant.project_dir"), sf_volumes)
+    if (getOption("radiant.project_dir", "") == "") {
+      sf_volumes <- getOption("radiant.launch_dir") %>% {set_names(., basename(.))}
+    } else {
+      sf_volumes <- getOption("radiant.project_dir") %>% {set_names(., basename(.))}
     }
     home <- radiant.data::find_home()
     if (home != sf_volumes) {
-      sf_volumes <- c(sf_volumes, home) %>% set_names(c(basename(sf_volumes), "Home"))
+      sf_volumes <- c(sf_volumes, home) %>% set_names(c(names(sf_volumes), "Home"))
     } else {
       sf_volumes <- c(Home = home)
     }
     if (sum(nzchar(getOption("radiant.sf_volumes", ""))) > 0) {
       sf_volumes <- getOption("radiant.sf_volumes") %>% {c(sf_volumes, .[!. %in% sf_volumes])}
+    }
+    missing_names <- is.na(names(sf_volumes))
+    if (sum(missing_names) > 0) {
+      sf_volumes[missing_names] <- basename(sf_volumes[missing_names])
     }
   }
 }
@@ -87,6 +92,7 @@ r_ssuid <- if (getOption("radiant.local")) {
 session$sendCustomMessage("session_start", r_ssuid)
 
 ## identify the shiny environment
+## deprecated - will be removed in future version
 r_environment <- session$token
 
 r_info_legacy <- function() {
@@ -195,8 +201,11 @@ isolate({
     }
   }
   for (dt in r_info[["dtree_list"]]) {
-    if (exists(dt, envir = r_data) && !bindingIsActive(as.symbol(dt), env = r_data)) {
-      shiny::makeReactiveBinding(dt, env = r_data)
+    if (exists(dt, envir = r_data)) {
+      r_data[[dt]] <- add_class(r_data[[dt]], "dtree")
+      if (!bindingIsActive(as.symbol(dt), env = r_data)) {
+        shiny::makeReactiveBinding(dt, env = r_data)
+      }
     }
   }
 })
@@ -226,15 +235,7 @@ if (!is.null(r_state$rmd_report) && is.null(r_state$rmd_edit)) {
 }
 
 if (length(r_state$rmd_edit) > 0) {
-  if (!grepl("'", r_state$rmd_edit)) {
-    ## weird escaping issue in Ace Editor related to single quotes (') on macOS
-    r_state$rmd_edit <- gsub("\\\\", "\\\\\\\\", r_state$rmd_edit) %>%
-      radiant.data::fix_smart()
-  } else if (Sys.info()["sysname"] == "Windows") {
-    ## Windows needs more \\\\
-    r_state$rmd_edit <- gsub("\\\\", "\\\\\\\\", r_state$rmd_edit) %>%
-      radiant.data::fix_smart()
-  }
+  r_state$rmd_edit <- r_state$rmd_edit %>% radiant.data::fix_smart()
 }
 
 ## legacy, to deal with state files created before
@@ -316,14 +317,14 @@ isolate({
 
 if (getOption("radiant.from.package", default = TRUE)) {
   ## launch using installed radiant.data package
-  radiant.data::copy_all(radiant.data)
-  # cat("\nGetting radiant.data from source ...\n")
+  # radiant.data::copy_all("radiant.data")
+  # cat("\nGetting radiant.data from package ...\n")
 } else {
   ## for shiny-server and development
   for (file in list.files("../../R", pattern = "\\.(r|R)$", full.names = TRUE)) {
     source(file, encoding = getOption("radiant.encoding", "UTF-8"), local = TRUE)
   }
-  # cat("\nGetting radiant.data from source ...\n")
+  cat("\nGetting radiant.data from source ...\n")
 }
 
 ## Getting screen width ...
@@ -332,3 +333,6 @@ if (getOption("radiant.from.package", default = TRUE)) {
 observeEvent(input$get_screen_width, {
   if (getOption("width", default = 250) != 250) options(width = 250)
 })
+
+
+radiant.data::copy_from(radiant.data, register, deregister)

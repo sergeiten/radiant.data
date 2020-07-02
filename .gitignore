@@ -6,6 +6,6 @@
 radiant.data.Rproj
 .DS_Store
 revdep/
-cran-comments.md
 .vscode
 tags
+radiant-data.dcf

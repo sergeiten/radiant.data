@@ -184,7 +184,7 @@ output$ui_Manage <- renderUI({
         condition = "input.dataType != 'clipboard' &&
                      input.dataType != 'examples'",
         conditionalPanel(
-          "input.dataType == 'csv' | input.dataType == 'url_csv'",
+          "input.dataType == 'csv' || input.dataType == 'url_csv'",
           with(tags, table(
             td(checkboxInput("man_header", "Header", TRUE)),
             td(HTML("&nbsp;&nbsp;")),
@@ -281,18 +281,23 @@ output$man_descr_html <- renderUI({
 })
 
 output$man_descr_md <- renderUI({
-  ## avoid all sorts of 'helpful' behavior from your browser
-  ## based on https://stackoverflow.com/a/35514029/1974918
   tagList(
     HTML("<label>Add data description:</label><br>"),
-    tags$textarea(
-      id = "man_data_descr",
-      rows = 15,
-      style = "width: 650px;",
-      class = "form-control",
-      autocorrect = "off",
-      autocapitalize = "off",
-      descr_out(r_info[[paste0(input$dataset, "_descr")]], "md")
+    shinyAce::aceEditor(
+      "man_data_descr",
+      mode = "markdown",
+      theme = getOption("radiant.ace_theme", default = "tomorrow"),
+      wordWrap = TRUE,
+      debounce = 0,
+      value =  descr_out(r_info[[paste0(input$dataset, "_descr")]], "md"),
+      placeholder = "Type text to describe the data using markdown to format it.\nSee http://commonmark.org/help/ for more information",
+      vimKeyBinding = getOption("radiant.ace_vim.keys", default = FALSE),
+      tabSize = getOption("radiant.ace_tabSize", 2),
+      useSoftTabs = getOption("radiant.ace_useSoftTabs", TRUE),
+      showInvisibles = getOption("radiant.ace_showInvisibles", FALSE),
+      autoScrollEditorIntoView = TRUE,
+      minLines = 15,
+      maxLines = 30
     )
   )
 })
@@ -484,7 +489,7 @@ observeEvent(input$url_rds_load, {
   if (radiant.data::is_empty(input$url_rds)) return()
   url_rds <- gsub("^\\s+|\\s+$", "", input$url_rds)
 
-  objname <- basename(url_rds) %>% sub("\\.rds","",.) %>% sub("\\?.*$","",.)
+  objname <- basename(url_rds) %>% sub("\\.rds", "", .) %>% sub("\\?.*$", "", .)
 
   if (!objname == radiant.data::fix_names(objname)) {
     objname <- "rds_url"
@@ -496,7 +501,7 @@ observeEvent(input$url_rds_load, {
     upload_error_handler(objname, "#### There was an error loading the r-data file from the provided url.")
   } else {
     r_data[[objname]] <- as.data.frame(robj, stringsAsFactors = FALSE)
-    cmd <- glue('{objname} <- readr::read_rds(url("{url_rds}")) %>% get()\nregister("{objname}")')
+    cmd <- glue('{objname} <- readr::read_rds(url("{url_rds}"))\nregister("{objname}")')
   }
 
   if (exists(objname, envir = r_data) && !bindingIsActive(as.symbol(objname), env = r_data)) {
@@ -845,6 +850,7 @@ output$uiRename <- renderUI({
 })
 
 output$man_example <- renderText({
+  req(input$dataset)
   req(!is.null(r_data[[input$dataset]]))
   ## Show only the first 10 (or 20) rows
   show_data_snippet(nshow = 10)
@@ -855,10 +861,15 @@ output$man_str <- renderPrint({
   str(r_data[[input$dataset]])
 })
 
-output$man_summary <- renderUI({
-  req(is.data.frame(r_data[[input$dataset]]))
-  summarytools::dfSummary(r_data[[input$dataset]], style = 'grid', plain.ascii = FALSE, graph.magnif = 0.85) %>%
-    print(method = 'render', omit.headings = TRUE)
+# output$man_summary <- renderUI({
+#   req(is.data.frame(r_data[[input$dataset]]))
+#   summarytools::dfSummary(r_data[[input$dataset]], style = 'grid', plain.ascii = FALSE, graph.magnif = 0.85) %>%
+#     print(method = 'render', omit.headings = TRUE)
+# })
+
+output$man_summary <- renderPrint({
+ req(is.data.frame(r_data[[input$dataset]]))
+ get_summary(r_data[[input$dataset]])
 })
 
 man_show_log <- reactive({

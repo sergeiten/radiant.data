@@ -9,7 +9,7 @@ rmd_generate <- c(
   "Auto paste" = "auto",
   "Manual paste" = "manual"
 )
-rmd_save_type <- c("Notebook", "HTML", "PDF", "Word", "Rmd")
+rmd_save_type <- c("Notebook", "HTML", "PDF", "Word", "Powerpoint", "Rmd")
 rmd_set <- c("To Rmd", "auto", "manual")
 rmd_set_rstudio <- c("To Rmd", "To R")
 
@@ -25,7 +25,7 @@ if (rstudioapi::isAvailable()) {
 }
 
 ## can still save report, code, and data without permission to run code
-if (!getOption("radiant.report")) {
+if (!isTRUE(getOption("radiant.report"))) {
   rmd_save_type <- "Rmd"
 }
 
@@ -56,10 +56,10 @@ Note: Markdown is used to format the report. Go to [commonmark.org](http://commo
 You can even include math if you want:
 
 $$
-\\\\begin{aligned}
-  y_t &= \\\\alpha + \\\\beta x_t + \\\\epsilon_{yt}, \\\\\\\\
-  z_t &= 3 \\\\times 9 + y_t + \\\\epsilon_{zt}.
-\\\\end{aligned}
+\\begin{aligned}
+  y_t &= \\alpha + \\beta x_t + \\epsilon_{yt}, \\\\
+  z_t &= 3 \\times 9 + y_t + \\epsilon_{zt}.
+\\end{aligned}
 $$
 
 To show the output, press the `Knit report (Rmd)` button.
@@ -119,12 +119,6 @@ visualize(
 > **Put your own code here or delete this sample report and create your own**
 
 "
-
-## weird escaping issue in Ace Editor related to single quotes (') on Mac
-## not yet tested on linux
-if (grepl("'", rmd_example) && Sys.info()["sysname"] != "Windows") {
-  rmd_example <- gsub("\\\\\\\\", "\\\\", rmd_example)
-}
 
 ## allow running code through button or keyboard shortcut
 report_rmd <- reactiveValues(report = 0, knit_button = 0, clear = 0)
@@ -275,33 +269,11 @@ if (getOption("radiant.shinyFiles", FALSE)) {
   )
 }
 
-radiant_auto <- reactive({
-  if (any(grepl("package:radiant", search()))) {
-    list()
-  } else {
-    withProgress(message = "Initializing auto-complete list", value = 1, {
-      grep("radiant", installed.packages()[,"Package"], value = TRUE) %>%
-        sapply(function(x) grep("^[A-Za-z]", getNamespaceExports(x), value = TRUE)) %>%
-        set_names(., paste0("{", names(.), "}"))
-    })
-  }
-})
-
-radiant_auto_search <- reactive({
-  report_rmd$report
-  report_r$report
-  grep("package:*", search(), value = TRUE) %>%
-    gsub("package:", "", .)  %>%
-    unique() %>%
-    sapply(function(x) grep("^[A-Za-z]", getNamespaceExports(x), value = TRUE)) %>%
-    set_names(., paste0("{", names(.), "}"))
-})
-
 radiant_auto_complete <- reactive({
   req(input$dataset)
   comps <- list(r_info[["datasetlist"]], as.vector(varnames()))
   names(comps) <- c("{datasets}", paste0("{", input$dataset, "}"))
-  c(comps, radiant_auto(), radiant_auto_search())
+  comps
 })
 
 output$report_rmd <- renderUI({
@@ -335,18 +307,22 @@ output$report_rmd <- renderUI({
     ),
     shinyAce::aceEditor(
       "rmd_edit",
-      selectionId = "rmd_edit_selection",
+      selectionId = "selection",
       mode = "markdown",
       theme = getOption("radiant.ace_theme", default = "tomorrow"),
       wordWrap = TRUE,
+      debounce = 0,
       height = "auto",
       value = state_init("rmd_edit", rmd_example) %>% fix_smart(),
+      placeholder = "Type text for your report using markdown to format it\n(http://commonmark.org/help/). Add R-code to include\nyour analysis results in the report as well. Click the ?\nicon on the top left of your screen for more information",
       vimKeyBinding = getOption("radiant.ace_vim.keys", default = FALSE),
-      hotkeys = list(rmd_hotkey = list(win = "CTRL-ENTER", mac = "CMD-ENTER")),
+      code_hotkeys = list("r", list(hotkey = list(win = "CTRL-ENTER|SHIFT-ENTER", mac = "CMD-ENTER|SHIFT-ENTER"))),
       tabSize = getOption("radiant.ace_tabSize", 2),
       useSoftTabs = getOption("radiant.ace_useSoftTabs", TRUE),
       showInvisibles = getOption("radiant.ace_showInvisibles", FALSE),
-      autoComplete = getOption("radiant.ace_autoComplete", "live"),
+      autoComplete = getOption("radiant.ace_autoComplete", "enable"),
+      # autoCompleters = c("static", "text", "rlang"),
+      autoCompleters = c("static", "rlang"),
       autoCompleteList = isolate(radiant_auto_complete())
     ),
     htmlOutput("rmd_knitted"),
@@ -354,13 +330,18 @@ output$report_rmd <- renderUI({
   )
 })
 
+# radiant_rmd_annotater <- shinyAce::aceAnnotate("rmd_edit")
+radiant_rmd_tooltip <- shinyAce::aceTooltip("rmd_edit")
+radiant_rmd_ac <- shinyAce::aceAutocomplete("rmd_edit")
+
 ## auto completion of available R functions, datasets, and variables
 observe({
   ## don't need to run until report generated
   req(report_rmd$report > 1)
   shinyAce::updateAceEditor(
     session, "rmd_edit",
-    autoCompleters = c("static", "text"),
+    # autoCompleters = c("static", "text", "rlang"),
+    autoCompleters = c("static", "rlang"),
     autoCompleteList = radiant_auto_complete()
   )
 })
@@ -377,7 +358,7 @@ observeEvent(input$rmd_clear, {
 })
 
 observe({
-  input$rmd_hotkey
+  input$rmd_edit_hotkey
   if (!is.null(input$rmd_knit)) {
     isolate({
       report_rmd$report <- report_rmd$report + 1
@@ -442,8 +423,8 @@ rmd_knitted <- eventReactive(report_rmd$report != 1, {
       } else if (!is_empty(input$rmd_edit)) {
         if (!is_empty(input$rmd_edit_selection, "")) {
           report <- input$rmd_edit_selection
-        } else if (!is_empty(input$rmd_hotkey$line, "") && report_rmd$knit_button == 0) {
-          report <- input$rmd_hotkey$line
+        } else if (!is_empty(input$rmd_edit_hotkey$line, "") && report_rmd$knit_button == 0) {
+          report <- input$rmd_edit_hotkey$line
         } else {
           report <- input$rmd_edit
           ## hack to allow processing current line

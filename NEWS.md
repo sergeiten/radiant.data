@@ -1,5 +1,103 @@
-# radiant.data 0.9.8.5
+# radiant.data 1.3.9
 
+* Fix for using the `date` function from the lubrdidate package in a filter
+* Removed functionality to convert a colum to type `ts` as this is not supported by dplyr 1.0.0 and vctrs 0.3.1
+* Updated documentation using https://github.com/r-lib/roxygen2/pull/1109
+
+# radiant.data 1.3.6
+
+* Updated styling for formatting for modals (e.g., help pages) that will also allow improved sizing of the (shinyFiles) file browser
+* Fix for `\r` line-endings in _Report > Rmd_ on Windows. Issue was most likely to occur when copy-and-pasting text from PDF into _Report > Rmd_.
+
+# radiant.data 1.3.4
+
+* Minor adjustments in anticipation of dplyr 1.0.0
+
+# radiant.data 1.3.3
+
+* Function to calculate "mode"
+* Fix for "spread" in Data > Transform with column name includes "."
+
+# radiant.data 1.3.1
+
+* If radiant is not opened from an Rstudio project, use the working directory at launch as the base directory for the application
+
+# radiant.data 1.3.0
+
+* Updated styling of Notebook and HTML reports (cosmo + zenburn)
+* Documentation updates to link to new video tutorials
+* Use `patchwork` for grouping multiple plots together
+* Apply `refactor` to any type in the _Data > Transform_ UI
+* Fix for `weighted.sd` when missing values differ for `x` and weights 
+* Avoid resetting the "Column header" to its default value in _Data > Explore_ when other settings are changed.
+
+# radiant.data 1.2.3
+
+* Fix for _Data > Transform > Spread_ when no variables are selected
+* Set `debounce` to 0 for all shinyAce editors
+
+# radiant.data 1.2.2
+
+* Use `zenburn` for code highlighting in Notebook and HTML report from _Report > Rmd_
+* Clean up "sf_volumes" from the when radiant is stopped
+
+# radiant.data 1.2.0
+
+* Update action buttons that initiate a calculation when one or more relevant inputs are changed. For example, when a model should be re-estimated because the set of explanatory variables was changed by the user, a spinning "refresh" icon will be shown
+
+# radiant.data 1.1.8
+
+* Changed default `quantile` algorithm used in the `xtile` function from number 2 to 7. See the help for `stats::quantile` for details
+* Added `me` and `meprop` functions to calculate the margin of error for a mean and a proportion. Functions are accessible from _Data > Pivot_ and _Data > Explore_
+
+# radiant.data 1.1.6
+
+* Improvements for wrapping generated code to _Report > Rmd_ or _Report > R_
+* _Data > Transform > Training_ now uses the `randomizr` package to allow blocking variables when creating a training variables. 
+
+# radiant.data 1.1.3
+
+* Guard against _using Data > Transform > Reorder/remove levels_ with too many levels (i.e., > 100)
+* Guard against _using Data > Transform > Reorder/remove variables_ with too many variables (i.e., > 100)
+* Fix for DT table callbacks when shiny 1.4 hits CRAN (see https://github.com/rstudio/DT/issues/146#issuecomment-534319155)
+* Tables from _Data > Pivot_ and _Data > Explore_ now have `nr` set to `Inf` by default (i.e., show all rows). The user can change this to the number of desired rows to show (e.g., select 3 rows in a sorted table)
+* Fix for example numbering in the help file for _Data > Transform_
+* Numerous small code changes to support enhanced auto-completion, tooltips, and annotations in shinyAce 0.4.1
+
+# radiant.data 1.0.6
+
+* Fix for `Data > Transform > Change type`
+* Option to `fix_names` to lower case
+* Keyboard shortcut (Enter) to load remove csv and rds files
+* Use a shinyAce input to generate data descriptions
+* Allow custom initial dataset list
+* Fix for latex formulas in _Report > Rmd_ on Windows
+* Updated requirements for markdown and Rmarkdown
+* Fix for `radiant.init.data` with shiny-server
+* Improvements to setup to allow access to server-side files by adding options to .Rprofile:
+   - Add `options(radiant.report = TRUE)` to allow report generation in _Report > Rmd_ and _Report > R_
+   - Add `options(radiant.shinyFiles = TRUE)` to allow server-side access to files
+   - List specific directories you want to use with radiant using, for example, `options(radiant.sf_volumes = c(Git = "/home/jovyan/git"))`
+ 
+# radiant.data 1.0.0
+
+* Support for series of class `ts` (e.g., Data > Transform > Change type > Time series)
+* Require shinyAce 0.4.0
+* Vertical jitter set to 0 by default
+
+# radiant.data 0.9.9.0
+
+* Added option to save _Report > Rmd_ as a powerpoint file using `Rmarkdown`
+* Removed dependency on `summarytools` due to breaking changes
+* Fix for interaction (`iterm`) and non-linear term (`qterm`) creation if character strings rather than integers are passed to the function
+* Remove specific symbols from reports in _Report > Rmd_ to avoid issues when generating HTML or PDF documents
+* Keyboard shortcuts, i.e., CTRL-O and CTRL-S (CMD-O and CMD-S on macOS) to open and save data files in the _Data > Manage_ tab 
+* Various fixes to address breaking changes in dplyr 0.8.0
+* Added `radiant_` prefix to all attributes, except `description`, to avoid conflicts with other packages (e.g., `vars` in dplyr)
+
+# radiant.data 0.9.8.6
+
+* Use `stringi::stri_trans_general` to replace special symbols in Rmarkdown that may cause problems
 * Add empty line before and after code chunks when saving reports to Rmarkdown
 * Use `rio` to load `sav`, `dta`, or `sas7bdat` files through the `read files` button in _Report > Rmd_ and _Report > R_.
 * Create a `qscatter` plot similar to the function of the same name in Stata
@@ -86,13 +184,13 @@ or radiant.data::radiant.data("assignment.state.rda")
 # radiant.data 0.9.5.0
 
 * Fix for `radiant.data::explore` when variable names contain an underscore 
-* Fix for `find_gdrive` when drive is not being synched
-* Fixes in _Report > Rmd_ and _Report > R_ to accomodate for pandoc > 2 
+* Fix for `find_gdrive` when drive is not being synced
+* Fixes in _Report > Rmd_ and _Report > R_ to accommodate  for pandoc > 2 
 
 # radiant.data 0.9.4.6
 
 * Don't update a reactive binding for an object if the binding already exists. See issue  https://github.com/rstudio/shiny/issues/2065
-* Fix to accomodate changes in `deparse` in R 3.5
+* Fix to accommodate changes in `deparse` in R 3.5
 * Fix for saving data in _Data > Manage_ and generating the relevant R-code
 
 # radiant.data 0.9.3.5
@@ -116,7 +214,7 @@ or radiant.data::radiant.data("assignment.state.rda")
 ## Major changes
 
 * When using radiant with Rstudio Viewer or in an Rstudio Window, loading and saving data through _Data > Manage_ generates R-code the user can add to _Report > Rmd_ or _Report > R_. Clicking the `Show R-code` checkbox displays the R-code used to load or save the current dataset
-* Various changes to the code to accomodate the use of `shiny::makeReactiveBinding`. The advantage is that the code generated for _Report > Rmd_ and _Report > R_ will no longer have to use a list (`r_data`) to store and access data. This means that code generated and used in the Radiant browser interface will be directly usable without the browser interface as well
+* Various changes to the code to accommodate the use of `shiny::makeReactiveBinding`. The advantage is that the code generated for _Report > Rmd_ and _Report > R_ will no longer have to use a list (`r_data`) to store and access data. This means that code generated and used in the Radiant browser interface will be directly usable without the browser interface as well
 * Removed `loadr`, `saver`, `load_csv`, `loadcsv_url`, `loadrds_url`, and `make_funs` functions as they are no longer needed
 * Deprecated `mean_rm`, `median_rm`, `min_rm`, `max_rm, `sd_rm`, `var_rm, and `sum_rm` functions as they are no longer needed 
 
@@ -183,7 +281,7 @@ or radiant.data::radiant.data("assignment.state.rda")
 
 * Allow all textarea inputs and multi-select inputs to be resized manually by the user
 * Use 200 dpi for plots in _Report > Rmd_ and _Report > R_
-* _Data > Vizualize_ now has an option to select a sample of data for scatter plots (e.g., 1K, 5K, 10K, or All)
+* _Data > Visualize_ now has an option to select a sample of data for scatter plots (e.g., 1K, 5K, 10K, or All)
 
 ## Bug fixes
 
@@ -222,7 +320,7 @@ or radiant.data::radiant.data("assignment.state.rda")
 * Cleanup now also occurs when the stop button is used in Rstudio to close the app
 * Fix to include `DiagrammeR` based plots in Rmarkdown reports
 * Fix in `read_files` for SQLite data names
-* De-activate spellcheck autocorrection in `selectizeInput` in Rstudio Viewer [shiny #1916](https://github.com/rstudio/shiny/issues/1916)
+* De-activate spell check auto correction in `selectizeInput` in Rstudio Viewer [shiny #1916](https://github.com/rstudio/shiny/issues/1916)
 * Fix to allow selecting and copying text output from _Report > Rmd_ and _Report > R_
 * Remove "fancy" quotes from filters
 * Known issue: The Rstudio viewer may not always close the viewer window when trying to stop the application with the `Stop` link in the navbar. As a work-around, use Rstudio's stop buttons instead. 
@@ -280,7 +378,7 @@ or radiant.data::radiant.data("assignment.state.rda")
 
 ## Bug fixes
 
-* Chi-sqaure results were not displayed correctly in _Data > Pivot_
+* Chi-square results were not displayed correctly in _Data > Pivot_
 * Fix for `state_multiple`
 
 # radiant.data 0.8.1.0
@@ -318,7 +416,7 @@ or radiant.data::radiant.data("assignment.state.rda")
 * Correctly handle decimal indicators when loading csv files in _Data > Manage_
 * Don't overwrite a dataset to combine if combine generates an error when user sets the the name of the combined data to that of an already selected dataset
 * When multiple variables were selected, data were not correctly summarized in Data > Transform
-* Add (function) lable to bar plot when x-variable is an integer
+* Add (function) label to bar plot when x-variable is an integer
 * Maintain order of variables in Data > Visualize when using "color", "fill", "comby", or "combx"
 * Avoid warning when switching datasets in Data > Transform and variables being summarized do not exists in the new dataset
 * which.pmax produced a list but needed to be integer

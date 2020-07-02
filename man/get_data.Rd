@@ -4,7 +4,7 @@
 \alias{get_data}
 \title{Select variables and filter data}
 \usage{
-get_data(dataset, vars = "", filt = "", rows = NULL, na.rm = TRUE)
+get_data(dataset, vars = "", filt = "", rows = NULL, na.rm = TRUE, envir = c())
 }
 \arguments{
 \item{dataset}{Dataset or name of the data.frame}
@@ -16,6 +16,8 @@ get_data(dataset, vars = "", filt = "", rows = NULL, na.rm = TRUE)
 \item{rows}{Select rows in the specified dataset}
 
 \item{na.rm}{Remove rows with missing values (default is TRUE)}
+
+\item{envir}{Environment to extract data from}
 }
 \value{
 Data.frame with specified columns and rows
@@ -28,6 +30,5 @@ Function is used in radiant to select variables and filter data based on user in
 }
 \examples{
 get_data(mtcars, vars = "cyl:vs", filt = "mpg > 25")
-get_data(mtcars , vars = c("mpg", "cyl"), rows = 1:10)
-
+get_data(mtcars, vars = c("mpg", "cyl"), rows = 1:10)
 }

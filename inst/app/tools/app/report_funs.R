@@ -57,7 +57,6 @@ getdeps <- function() {
     htmltools::tagList(),
     c(
       htmlwidgets:::getDependency("DiagrammeR", "DiagrammeR"),
-      # htmlwidgets:::getDependency("datatables", "DT"),
       htmlwidgets:::getDependency("plotly", "plotly")
     )
   )
@@ -125,21 +124,21 @@ setup_report <- function(
   sopts <- ifelse(save_type == "PDF", ",\n  screenshot.opts = list(vheight = 1200)", "")
 
   if (add_yml) {
-    if (save_type %in% c("PDF", "Word")) {
+    if (save_type %in% c("PDF", "Word", "Powerpoint")) {
       yml <- ""
     } else if (save_type == "HTML") {
-      yml <- '---\noutput:\n  html_document:\n    highlight: textmate\n    theme: spacelab\n    df_print: paged\n    toc: yes\n---\n\n'
+      yml <- '---\npagetitle: HTML report\noutput:\n  html_document:\n    highlight: zenburn\n    theme: cosmo\n    df_print: paged\n    toc: yes\n---\n\n'
     } else if (save_type %in% c("Rmd", "Rmd + Data (zip)")) {
-      yml <- '---\noutput:\n  html_document:\n    highlight: textmate\n    theme: spacelab\n    df_print: paged\n    toc: yes\n    code_folding: hide\n    code_download: true\n---\n\n'
+      yml <- '---\npagetitle: Rmd report\noutput:\n  html_document:\n    highlight: zenburn\n    theme: cosmo\n    df_print: paged\n    toc: yes\n    code_folding: hide\n    code_download: true\n---\n\n'
     } else {
-      yml <- '---\noutput:\n  html_notebook:\n    highlight: textmate\n    theme: spacelab\n    toc: yes\n    code_folding: hide\n---\n\n'
+      yml <- '---\npagetitle: Notebook report\noutput:\n  html_notebook:\n    highlight: zenburn\n    theme: cosmo\n    toc: yes\n    code_folding: hide\n---\n\n'
     }
   } else {
     yml = ""
   }
 
   if (missing(ech)) {
-    ech <- if (save_type %in% c("PDF", "Word", "HTML")) "FALSE" else "TRUE"
+    ech <- if (save_type %in% c("PDF", "Word", "Powerpoint", "HTML")) "FALSE" else "TRUE"
   }
 
   if (grepl("```{r r_setup, include = FALSE}\n", report, fixed = TRUE)) {
@@ -153,7 +152,7 @@ knitr::opts_chunk$set(
   error = TRUE,
   cache = FALSE,
   message = FALSE,\n
-  dpi = 144,
+  dpi = 96,
   warning = FALSE", sopts, "
 )
 
@@ -166,7 +165,7 @@ options(
 )
 
 ## make all required libraries available by loading radiant package if needed
-if (!exists(\"r_environment\")) library(", lib, ")
+if (is.null(shiny::getDefaultReactiveDomain())) library(", lib, ")
 
 ## include code to load the data you require
 ## for interactive use attach the r_data environment
@@ -174,16 +173,25 @@ if (!exists(\"r_environment\")) library(", lib, ")
 ```
 
 <style>
+.btn, .form-control, pre, code, pre code {
+  border-radius: 4px;
+}
 .table {
   width: auto;
 }
 ul, ol {
   padding-left: 18px;
 }
-pre, code, pre code {
+code, pre, pre code {
   overflow: auto;
   white-space: pre;
   word-wrap: normal;
+}
+code {
+  color: #c7254e;
+  background-color: #f9f2f4;
+}
+pre {
   background-color: #ffffff;
 }
 </style>\n\n", report)
@@ -315,6 +323,11 @@ observeEvent(input$report_ignore, {
 ## Knit for report in Radiant
 knit_it <- function(report, type = "rmd") {
 
+  ## may be needed on windows when text has been copy-and-pasted
+  ## from a pdf
+  report <- gsub("\r\n", "\n", report) %>%
+    gsub("\r", "\n", .)
+
   if (type == "rmd") {
     report <- gsub("\\\\\\\\\\s*\n", "\\\\\\\\\\\\\\\\\n", report)
   }
@@ -398,6 +411,9 @@ knit_it <- function(report, type = "rmd") {
     quiet = TRUE
   )
 
+  ## removing annoying fig.caps for unnamed chunks
+  md <- gsub("<p class=\"caption\">plot of chunk unnamed-chunk-[0-9]+</p>", "", md)
+
   ## add basic styling to tables
   paste(
     markdown::markdownToHTML(text = md, fragment.only = TRUE, stylesheet = ""),
@@ -414,7 +430,7 @@ knit_it <- function(report, type = "rmd") {
 
 sans_ext <- function(path) {
   sub(
-    "(\\.state\\.rda|\\.rda$|\\.rds$|\\.rmd$|\\.r$|\\.rdata$|\\.html|\\.nb\\.html|\\.pdf|\\.docx|\\.rmd|\\.zip)", "",
+    "(\\.state\\.rda|\\.rda$|\\.rds$|\\.rmd$|\\.r$|\\.rdata$|\\.html|\\.nb\\.html|\\.pdf|\\.docx|\\.pptx|\\.rmd|\\.zip)", "",
     tolower(path), ignore.case = TRUE
   )
 }
@@ -487,6 +503,7 @@ report_save_filename <- function(type = "rmd", full.name = TRUE) {
     HTML = "html",
     PDF = "pdf",
     Word = "docx",
+    Powerpoint = "pptx",
     Rmd = "Rmd",
     `Rmd + Data (zip)` = "zip",
     R = "R",
@@ -510,7 +527,7 @@ report_save_content <- function(file, type = "rmd") {
 
       zip_info <- getOption("radiant.zip")
       if (save_type %in% c("Rmd + Data (zip)", "R + Data (zip)")) {
-        if (zip_info[1] == "") {
+        if (is_empty(zip_info)) {
           ## No zip warning
           showModal(
             modalDialog(
@@ -609,7 +626,8 @@ report_save_content <- function(file, type = "rmd") {
           report <- paste0("\n```{r echo = TRUE}\n", report, "\n```\n")
         }
 
-        init <- setup_report(fix_smart(report), save_type = save_type, lib = lib)
+        init <- setup_report(report, save_type = save_type, lib = lib) %>%
+          fix_smart()
 
         ## on linux ensure you have you have pandoc > 1.14 installed
         ## you may need to use http://pandoc.org/installing.html#installing-from-source
@@ -619,25 +637,37 @@ report_save_content <- function(file, type = "rmd") {
             ## have to use current dir so (relative) paths work properly
             tmp_fn <- tempfile(pattern = "report-", tmpdir = ".", fileext = ".Rmd")
             cat(init, file = tmp_fn, sep = "\n")
+
+            if (!save_type %in% c("Notebook", "HTML")) {
+              oop <- knitr::opts_chunk$get()$screenshot.force
+              knitr::opts_chunk$set(screenshot.force = TRUE)
+              on.exit(knitr::opts_chunk$set(screenshot.force = oop))
+            }
+
             out <- rmarkdown::render(
               tmp_fn,
               switch(
                 save_type,
-                Notebook = rmarkdown::html_notebook(highlight = "textmate", theme = "spacelab", code_folding = "hide"),
-                HTML = rmarkdown::html_document(highlight = "textmate", theme = "spacelab", code_download = TRUE, df_print = "paged"),
+                Notebook = rmarkdown::html_notebook(highlight = "zenburn", theme = "cosmo", code_folding = "hide"),
+                HTML = rmarkdown::html_document(highlight = "zenburn", theme = "cosmo", code_download = TRUE, df_print = "paged"),
                 PDF = rmarkdown::pdf_document(),
-                Word = rmarkdown::word_document(reference_docx = file.path(system.file(package = "radiant.data"), "app/www/style.docx"))
+                Word = rmarkdown::word_document(
+                  reference_docx = getOption("radiant.word_style", default = file.path(system.file(package = "radiant.data"), "app/www/style.docx")),
+                ),
+                Powerpoint = rmarkdown::powerpoint_presentation(
+                  reference_doc = getOption("radiant.powerpoint_style", default = file.path(system.file(package = "radiant.data"), "app/www/style.potx"))
+                )
               ),
               envir = r_data, quiet = TRUE, encoding = "UTF-8",
               output_options = list(pandoc_args = "--quiet")
             )
-            ## file.rename may fail to overwrite even if confirmed by the users
-            # file.rename(out, file)
+            ## no using file.rename as it may fail to overwrite even if confirmed by the users
             file.copy(out, file, overwrite = TRUE)
             file.remove(out, tmp_fn)
           } else {
             ## still needed because rmarkdown requires pandoc
             setup_report(report, add_yml = FALSE, type = save_type, lib = lib) %>%
+              fix_smart() %>%
               knit_it_save() %>%
               cat(file = file, sep = "\n")
           }
@@ -673,33 +703,43 @@ update_report <- function(
 
   ## wrapping similar to styler
   depr <- function(x, wrap = FALSE) {
-    if (wrap) {
-      for (i in names(x)) {
-        tmp <- x[[i]]
-        wco <- ifelse(max(nchar(tmp)) > 20, 20L, 55L)
-        tmp <- deparse(tmp, control = dctrl, width.cutoff = wco)
-        if ((nchar(i) + sum(nchar(tmp)) < 70) | (length(tmp) == 2 & tmp[2] == ")")) {
-          tmp <- paste0(tmp, collapse = "")
-        }
+    cutoff <- ifelse (wrap, 20L, 55L)
+    for (i in names(x)) {
+      tmp <- x[[i]]
+      wco <- ifelse(max(nchar(tmp)) > cutoff, cutoff, 55L)
+      if (inherits(tmp, "fractions")) {
         if (length(tmp) > 1) {
-          if (grepl("^c\\(", tmp[1])) {
-            tmp <- c("c(", sub("^c\\(", "", tmp))
-          } else {
-            tmp <- c("list(", sub("^list\\(", "", tmp))
-          }
-          if (tail(tmp, 1) != ")") {
-            tmp <- c(sub("\\)$", "", tmp), ")")
-          }
+          tmp <- paste0("c(", paste(tmp, collapse = ", "), ")")
+        } else {
+          tmp <- as.character(tmp)
         }
-        x[[i]] <- sub("^\\s+", "", tmp) %>%
-          paste0(collapse = "\n    ") %>%
-          sub("[ ]+\\)", "  \\)", .)
+      } else {
+        tmp <- deparse(tmp, control = dctrl, width.cutoff = wco)
       }
+      if ((nchar(i) + sum(nchar(tmp)) < 70) | (length(tmp) == 2 & tmp[2] == ")")) {
+        tmp <- paste0(tmp, collapse = "")
+      }
+      if (length(tmp) > 1) {
+        if (grepl("^c\\(", tmp[1])) {
+          tmp <- c("c(", sub("^c\\(", "", tmp))
+        } else {
+          tmp <- c("list(", sub("^list\\(", "", tmp))
+        }
+        if (tail(tmp, 1) != ")") {
+          tmp <- c(sub("\\)$", "", tmp), ")")
+        }
+      }
+      x[[i]] <- sub("^\\s+", "", tmp) %>%
+        paste0(collapse = "\n    ") %>%
+        sub("[ ]+\\)", "  \\)", .)
+    }
+
+    if (wrap) {
       x <- paste0(paste0(paste0("\n  ", names(x)), " = ", x), collapse = ", ")
       x <- paste0("list(", x, "\n)")
     } else {
-      x <- deparse(x, control = dctrl, width.cutoff = 500L) %>%
-        paste(collapse = "")
+      x <- paste0(paste0(names(x), " = ", x), collapse = ", ")
+      x <- paste0("list(", x, ")")
     }
     x
   }
@@ -722,7 +762,7 @@ update_report <- function(
       }
       if (inp_out[i] != "" && length(inp_out[[i]]) > 0) {
         if (sum(nchar(inp_out[[i]])) > 40L) {
-          cmd <- depr(inp_out[[i]], wrap = wrap) %>%
+          cmd <- depr(inp_out[[i]], wrap = TRUE) %>%
             sub("list\\(", paste0(outputs[i], "\\(\n  ", inp, ", "), .) %>%
             paste0(cmd, "\n", .)
         } else {
@@ -749,7 +789,7 @@ update_report <- function(
     update_report_fun(cmd, type = "r")
   } else {
     if (figs) {
-      cmd <- paste0("\n```{r fig.width = ", round(7 * fig.width / 650, 2), ", fig.height = ", round(7 * fig.height / 650, 2), ", dpi = 144}\n", cmd, "\n```\n")
+      cmd <- paste0("\n```{r fig.width = ", round(7 * fig.width / 650, 2), ", fig.height = ", round(7 * fig.height / 650, 2), ", dpi = 96}\n", cmd, "\n```\n")
     } else {
       cmd <- paste0("\n```{r}\n", cmd, "\n```\n")
     }

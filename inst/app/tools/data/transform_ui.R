@@ -23,7 +23,7 @@ output$ui_tr_replace <- renderUI({
 })
 
 output$ui_tr_normalizer <- renderUI({
-  isNum <- .get_class() %in% c("numeric", "integer")
+  isNum <- .get_class() %in% c("numeric", "integer", "ts")
   vars <- varnames()[isNum]
   if (length(vars) == 0) return()
   selectInput(
@@ -34,7 +34,7 @@ output$ui_tr_normalizer <- renderUI({
 })
 
 output$ui_tr_tab2dat <- renderUI({
-  isNum <- .get_class() %in% c("numeric", "integer")
+  isNum <- .get_class() %in% c("numeric", "integer", "ts")
   vars <- varnames()[isNum]
   selectInput(
     "tr_tab2dat", "Frequency variable:",
@@ -70,6 +70,9 @@ output$ui_tr_spread <- renderUI({
 output$ui_tr_reorg_vars <- renderUI({
   req(input$tr_change_type)
   vars <- varnames()
+  validate(
+    need(length(vars) < 101, "Interactive re-ordering is only supported up to 100 variables. See ?dplyr::select for information on how to re-order variables in R")
+  )
   selectizeInput(
     "tr_reorg_vars", "Reorder/remove variables:", choices = vars,
     selected = vars, multiple = TRUE,
@@ -83,13 +86,11 @@ output$ui_tr_reorg_levs <- renderUI({
     need(available(input$tr_vars), "Select a single variable of type factor or character")
   )
   fctCol <- input$tr_vars[1]
-  isFct <- .get_class()[fctCol] %in% c("factor", "character")
-  validate(
-    need(isFct, "Selected variable is not of type factor or character")
-  )
   fct <- .get_data_transform()[[fctCol]]
   levs <- if (is.factor(fct)) levels(fct) else levels(as_factor(fct))
-
+  validate(
+    need(length(levs) < 101, "Interactive re-ordering is only supported up to 100 levels. See ?radiant.data::refactor for information on how to re-order levels in R")
+  )
   tagList(
     selectizeInput(
       "tr_reorg_levs", "Reorder/remove levels:", choices = levs,
@@ -104,6 +105,13 @@ output$ui_tr_reorg_levs <- renderUI({
   )
 })
 
+transform_auto_complete <- reactive({
+  req(input$dataset)
+  comps <- list(r_info[["datasetlist"]][input$dataset], as.vector(varnames()))
+  names(comps) <- c("{datasets}", paste0("{", input$dataset, "}"))
+  comps
+})
+
 output$ui_tr_log <- renderUI({
   tagList(
     HTML("<label>Transform command log:</label><br>"),
@@ -112,17 +120,34 @@ output$ui_tr_log <- renderUI({
       mode = "r",
       theme = getOption("radiant.ace_theme", default = "tomorrow"),
       wordWrap = TRUE,
+      debounce = 0,
       value = state_init("tr_log", "") %>% fix_smart(),
       vimKeyBinding = getOption("radiant.ace_vim.keys", default = FALSE),
       tabSize = getOption("radiant.ace_tabSize", 2),
       useSoftTabs = getOption("radiant.ace_useSoftTabs", TRUE),
       showInvisibles = getOption("radiant.ace_showInvisibles", FALSE),
       autoScrollEditorIntoView = TRUE,
+      autoComplete = getOption("radiant.ace_autoComplete", "enable"),
+      autoCompleters = c("static", "rlang"),
+      autoCompleteList = isolate(transform_auto_complete()),
       minLines = 5,
       maxLines = 15
     )
   )
 })
+
+transform_annotater <- shinyAce::aceAnnotate("tr_log")
+transform_tooltip <- shinyAce::aceTooltip("tr_log")
+transform_ac <- shinyAce::aceAutocomplete("tr_log")
+
+observe({
+  shinyAce::updateAceEditor(
+    session, "tr_log",
+    autoCompleters = c("static", "rlang"),
+    autoCompleteList = transform_auto_complete()
+  )
+})
+
 
 ext_options <- list(
   "none" = "", "log" = "_ln", "exp" = "_exp",
@@ -227,8 +252,9 @@ trans_options <- list(
 type_options <- list(
   "None" = "none", "As factor" = "as_factor",
   "As numeric" = "as_numeric", "As integer" = "as_integer",
-  "As character" = "as_character", "As date (mdy)" = "as_mdy",
-  "As date (dmy)" = "as_dmy", "As date (ymd)" = "as_ymd",
+  "As character" = "as_character",
+  "As date (mdy)" = "as_mdy", "As date (dmy)" = "as_dmy",
+  "As date (ymd)" = "as_ymd",
   "As date/time (mdy_hms)" = "as_mdy_hms",
   "As date/time (mdy_hm)" = "as_mdy_hm",
   "As date/time (dmy_hms)" = "as_dmy_hms",
@@ -282,7 +308,19 @@ output$ui_Transform <- renderUI({
       selectizeInput("tr_change_type", "Transformation type:", trans_types, selected = "none"),
       conditionalPanel(
         condition = "input.tr_change_type == 'type'",
-        selectInput("tr_typefunction", "Change variable type:", type_options, selected = "none")
+        selectInput("tr_typefunction", "Change variable type:", type_options, selected = "none"),
+        conditionalPanel(
+          condition = "input.tr_typefunction == 'ts'",
+          tags$table(
+            tags$td(numericInput("tr_ts_start_year", label = "Start year:", min = 1, value = NA)),
+            tags$td(numericInput("tr_ts_start_period", label = "Start period:", min = 1, value = 1))
+          ),
+          tags$table(
+            tags$td(numericInput("tr_ts_end_year", label = "End year:", value = NA)),
+            tags$td(numericInput("tr_ts_end_period", label = "End period:", value = NA))
+          ),
+          numericInput("tr_ts_frequency", label = "Frequency:", min = 1, value = 52)
+        )
       ),
       conditionalPanel(
         condition = "input.tr_change_type == 'transform'",
@@ -402,6 +440,8 @@ output$ui_Transform <- renderUI({
 observeEvent(input$tr_change_type, {
   if (input$tr_change_type == "create") {
     updateSelectInput(session = session, inputId = "tr_vars", label = "Group by:", selected = character(0))
+  } else if (input$tr_change_type == "training") {
+    updateSelectInput(session = session, inputId = "tr_vars", label = "Block by:", selected = character(0))
   } else if (input$tr_change_type == "spread") {
     updateSelectInput(session = session, inputId = "tr_vars", selected = character(0))
   } else {
@@ -418,26 +458,39 @@ fix_ext <- function(ext) {
 }
 
 .change_type <- function(
-  dataset, fun, vars = "", .ext = "",
+  dataset, fun, tr_ts, vars = "", .ext = "",
   store_dat = "", store = TRUE
 ) {
 
   .ext <- fix_ext(.ext)
 
+  if (!is_empty(tr_ts)) {
+    tr_ts <- lapply(tr_ts, function(x) x[!is.na(x)]) %>% {.[sapply(., length) > 0]}
+  }
+
   if (!store || !is.character(dataset)) {
     fun <- get(fun)
     if (is_empty(.ext)) {
-      mutate_at(dataset, .vars = vars, .funs = funs(fun))
+      do.call(mutate_at, c(list(.tbl = dataset, .vars = vars), .funs = fun, tr_ts))
+
     } else {
-      mutate_at(dataset, .vars = vars, .funs = funs(fun)) %>%
+      do.call(mutate_at, c(list(.tbl = dataset, .vars = vars), .funs = fun, tr_ts)) %>%
         set_colnames(paste0(vars, .ext))
     }
   } else {
     if (store_dat == "") store_dat <- dataset
-    if (is_empty(.ext)) {
-      paste0("## change variable type\n", store_dat, " <- mutate_at(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(", fun, "))\n")
+    if (is_empty(tr_ts)) {
+      tr_ts <- ""
     } else {
-      paste0("## change variable type\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(", fun, "), .ext = \"", .ext, "\")\n")
+      tr_ts <- deparse(tr_ts, control = getOption("dctrl"), width.cutoff = 500L) %>%
+        sub("list\\(", ", ", .) %>%
+        sub("\\)$", "", .)
+    }
+
+    if (is_empty(.ext)) {
+      paste0("## change variable type\n", store_dat, " <- mutate_at(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ", fun, tr_ts, ")\n")
+    } else {
+      paste0("## change variable type\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ", fun, tr_ts, ", .ext = \"", .ext, "\")\n")
     }
   }
 }
@@ -452,9 +505,9 @@ fix_ext <- function(ext) {
   if (!store && !is.character(dataset)) {
     fun <- get(fun)
     if (is_empty(.ext)) {
-      result <- try(mutate_at(dataset, .vars = vars, .funs = funs(fun)), silent = TRUE)
+      result <- try(mutate_at(dataset, .vars = vars, .funs = fun), silent = TRUE)
     } else {
-      result <- try(mutate_at(dataset, .vars = vars, .funs = funs(fun)) %>% set_colnames(paste0(vars, .ext)), silent = TRUE)
+      result <- try(mutate_at(dataset, .vars = vars, .funs = fun) %>% set_colnames(paste0(vars, .ext)), silent = TRUE)
     }
     if (inherits(result, "try-error")) {
       paste0("\nThe transformation type you selected generated an error.\n\nThe error message was:\n\n", attr(result, "condition")$message, "\n\nPlease change the selection of variables or the transformation type and try again.")
@@ -464,9 +517,9 @@ fix_ext <- function(ext) {
   } else {
     if (store_dat == "") store_dat <- dataset
     if (is_empty(.ext)) {
-      paste0("## transform variable\n", store_dat, " <- mutate_at(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(", fun, "))\n")
+      paste0("## transform variable\n", store_dat, " <- mutate_at(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ", fun, ")\n")
     } else {
-      paste0("## transform variable\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(", fun, "), .ext = \"", .ext, "\")\n")
+      paste0("## transform variable\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ", fun, ", .ext = \"", .ext, "\")\n")
     }
   }
 }
@@ -577,7 +630,7 @@ fix_ext <- function(ext) {
     if (store_dat == "") store_dat <- dataset
     name_check <- fix_names(var) != var
     if (any(name_check)) var[name_check] <- paste0("`", var[name_check], "`")
-    paste0("## rename variable(s)\n", store_dat, " <- rename(", dataset, ", ", paste(rnm, var, sep = " = ", collapse = ", "), ")\n")
+    paste0("## rename variable(s)\n", store_dat, " <- dplyr::rename(", dataset, ", ", paste(rnm, var, sep = " = ", collapse = ", "), ")\n")
   }
 }
 
@@ -615,7 +668,7 @@ fix_ext <- function(ext) {
       set_colnames(paste0(vars, .ext))
   } else {
     if (store_dat == "") store_dat <- dataset
-    paste0("## normalize variables\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(normalize(.,", nzvar, ")), .ext = \"", .ext, "\")\n")
+    paste0("## normalize variables\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ~ normalize(., ", nzvar, "), .ext = \"", .ext, "\")\n")
   }
 }
 
@@ -657,14 +710,11 @@ fix_ext <- function(ext) {
   vars = "", store_dat = "", store = TRUE
 ) {
 
-  key <- fix_names(key)
-  value <- fix_names(value)
-
   if (!store && !is.character(dataset)) {
     if (!vars[1] == "") dataset <- select_at(dataset, .vars = vars)
     cn <- colnames(dataset)
     if (!all(key %in% cn) || !value %in% cn) return("Key or value variable is not in the dataset")
-    nr <- distinct_(dataset, .dots = base::setdiff(cn, value), .keep_all = TRUE) %>%
+    nr <- distinct_at(dataset, .vars = base::setdiff(cn, value), .keep_all = TRUE) %>%
       nrow()
     if (nr < nrow(dataset)) return("Rows are not unique. Select additional variables")
     if (length(key) > 1) {
@@ -675,7 +725,7 @@ fix_ext <- function(ext) {
   } else {
     if (store_dat == "") store_dat <- dataset
     cmd <- ""
-    if (!vars[1] == "") {
+    if (!is_empty(vars)) {
       cmd <- paste0("## Select columns\n", store_dat, " <- select(", dataset, ", ", paste0(vars, collapse = ", "), ")\n")
       dataset <- store_dat
     }
@@ -714,16 +764,15 @@ fix_ext <- function(ext) {
 
   if (!store && !is.character(dataset)) {
     if (is.na(bins) || !is.integer(bins)) return("Please specify the (integer) number of bins to use")
-    xt <- function(x, bins, rev) radiant.data::xtile(x, bins, rev = rev)
     select_at(dataset, .vars = vars) %>%
-      mutate_all(funs(xt(., bins, rev = rev))) %>%
+      mutate_all(~ xtile(., bins, rev = rev)) %>%
       set_colnames(paste0(vars, .ext))
   } else {
     if (store_dat == "") store_dat <- dataset
     if (rev) {
-      paste0("## bin variables\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(xtile(., ", bins, ", rev = TRUE)), .ext = \"", .ext, "\")\n")
+      paste0("## bin variables\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ~ xtile(., ", bins, ", rev = TRUE), .ext = \"", .ext, "\")\n")
     } else {
-      paste0("## bin variables\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = funs(xtile(., ", bins, ")), .ext = \"", .ext, "\")\n")
+      paste0("## bin variables\n", store_dat, " <- mutate_ext(", dataset, ", .vars = vars(", paste0(vars, collapse = ", "), "), .funs = ~ xtile(., ", bins, "), .ext = \"", .ext, "\")\n")
     }
   }
 }
@@ -741,10 +790,22 @@ fix_ext <- function(ext) {
   }
   if (!store && !is.character(dataset)) {
     n <- n %>% {ifelse(. < 0 || is.na(.) || . > nr, .7, .)}
-    data.frame(make_train(n, nr, seed), stringsAsFactors = FALSE) %>% setNames(name)
+    if (is_empty(vars)) {
+      blocks <- NULL
+    } else {
+      blocks <- dataset[,vars]
+    }
+
+    make_train(n, nr, blocks = blocks, seed = seed) %>%
+      data.frame(stringsAsFactors = FALSE) %>%
+      setNames(name)
   } else {
     if (store_dat == "") store_dat <- dataset
-    paste0("## created variable to select training sample\n", store_dat, " <- mutate(", dataset, ", ", name, " = make_train(", n, ", n(), seed = ", seed, "))\n")
+    if (is_empty(vars)) {
+      paste0("## created variable to select training sample\n", store_dat, " <- mutate(", dataset, ", ", name, " = make_train(", n, ", n(), seed = ", seed, "))\n")
+    } else {
+      paste0("## created variable to select training sample\n", store_dat, " <- mutate(", dataset, ", ", name, " = make_train(", n, ", blocks = select(", dataset, ", ", paste0(vars, collapse = ", "), "), seed = ", seed, "))\n")
+    }
   }
 }
 
@@ -770,7 +831,7 @@ fix_ext <- function(ext) {
 
 .reorg_vars <- function(dataset, vars = "", store_dat = "", store = TRUE) {
  if (!store || !is.character(dataset)) {
-    get_data(dataset, vars, filt = "", na.rm = FALSE)
+    get_data(dataset, vars, filt = "", na.rm = FALSE, envir = r_data)
   } else {
     if (store_dat == "") store_dat <- dataset
     paste0("## reorder/remove variables\n", store_dat, " <- select(", dataset, ", ", paste0(vars, collapse = ", "), ")\n")
@@ -805,8 +866,7 @@ fix_ext <- function(ext) {
     if (all(vars == "") || length(unique(vars)) == ncol(dataset)) {
       dat <- distinct(dataset)
     } else {
-      ## keeping the _ version for now because there is no distinct_at
-      dat <- distinct_(dataset, .dots = vars, .keep_all = TRUE)
+      dat <- distinct_at(dataset, .vars = vars, .keep_all = TRUE)
     }
 
     if (nrow(dat) == nrow(dataset)) {
@@ -870,7 +930,7 @@ fix_ext <- function(ext) {
   }
 
   if (!store || !is.character(dataset)) {
-    get_data(dataset, vars = vars, filt = filt, na.rm = FALSE)
+    get_data(dataset, vars = vars, filt = filt, na.rm = FALSE, envir = r_data)
   } else {
     filt <- gsub("\"", "'", filt)
     if (all(vars == "")) {
@@ -934,7 +994,7 @@ transform_main <- reactive({
 
   ## create training variable
   if (input$tr_change_type == "training") {
-    return(.training(dat, n = input$tr_training_n, nr = nrow(dat), name = input$tr_training, seed = input$tr_training_seed, store = FALSE))
+    return(.training(dat, n = input$tr_training_n, nr = nrow(dat), name = input$tr_training, vars = inp_vars("tr_vars"), seed = input$tr_training_seed, store = FALSE))
   }
 
   if (input$tr_change_type == "create") {
@@ -1053,7 +1113,16 @@ transform_main <- reactive({
       if (input$tr_typefunction == "none") {
         return("Select a transformation type for the selected variables")
       } else {
-        return(.change_type(dat, input$tr_typefunction, inp_vars("tr_vars"), input$tr_typename, store = FALSE))
+        if (input$tr_typefunction == "ts") {
+          tr_ts <- list(
+            start = c(input$tr_ts_start_year, input$tr_ts_start_period),
+            end = c(input$tr_ts_end_year, input$tr_ts_end_period),
+            frequency = input$tr_ts_frequency
+          )
+        } else {
+          tr_ts <- NULL
+        }
+        return(.change_type(dat, input$tr_typefunction, tr_ts, inp_vars("tr_vars"), input$tr_typename, store = FALSE))
       }
     }
 
@@ -1068,10 +1137,10 @@ transform_main <- reactive({
 
     if (input$tr_change_type == "reorg_levs") {
       fct <- input$tr_vars[1]
-      if (is.factor(dat[[fct]]) || is.character(dat[[fct]])) {
-        return(.reorg_levs(dat, fct, input$tr_reorg_levs, input$tr_rorepl, input$tr_roname, store = FALSE))
+      if (length(unique(dat[[fct]])) > 100) {
+        return("Interactive re-ordering is only supported up to 100 levels. See\n?radiant.data::refactor for information on how to re-order levels in R")
       } else {
-        return("Select a variable of type factor or character to change the ordering\nand/or number of levels")
+        return(.reorg_levs(dat, fct, input$tr_reorg_levs, input$tr_rorepl, input$tr_roname, store = FALSE))
       }
     }
 
@@ -1133,6 +1202,8 @@ output$transform_summary <- renderPrint({
         cat("** Press the 'Store' button to add your changes to the data **\n\n")
         if (!is_empty(input$tr_vars) && input$tr_change_type == "create") {
           cat("** Results are grouped by", paste(input$tr_vars, collapse = ", "), "**\n\n")
+        } else if (!is_empty(input$tr_vars) && input$tr_change_type == "training") {
+          cat("** Results are blocked by", paste(input$tr_vars, collapse = ", "), "**\n\n")
         }
       }
 
@@ -1214,13 +1285,22 @@ observeEvent(input$tr_store, {
     cmd <- .reorg_vars(input$dataset, vars = input$tr_reorg_vars, df_name)
     r_data[[df_name]] <- dat
   } else if (input$tr_change_type == "type") {
-    cmd <- .change_type(input$dataset, fun = input$tr_typefunction, vars = input$tr_vars, .ext = input$tr_typename, df_name)
+   if (input$tr_typefunction == "ts") {
+      tr_ts <- list(
+        start = c(input$tr_ts_start_year, input$tr_ts_start_period),
+        end = c(input$tr_ts_end_year, input$tr_ts_end_period),
+        frequency = input$tr_ts_frequency
+      )
+    } else {
+      tr_ts <- NULL
+    }
+    cmd <- .change_type(input$dataset, fun = input$tr_typefunction, tr_ts, vars = input$tr_vars, .ext = input$tr_typename, df_name)
     r_data[[df_name]][, colnames(dat)] <- dat
   } else if (input$tr_change_type == "transform") {
     cmd <- .transform(input$dataset, fun = input$tr_transfunction, vars = input$tr_vars, .ext = input$tr_ext, df_name)
     r_data[[df_name]][, colnames(dat)] <- dat
   } else if (input$tr_change_type == "training") {
-    cmd <- .training(input$dataset, n = input$tr_training_n, nr = nrow(dat), name = input$tr_training, seed = input$tr_training_seed, df_name)
+    cmd <- .training(input$dataset, n = input$tr_training_n, nr = nrow(dat), name = input$tr_training, vars = input$tr_vars, seed = input$tr_training_seed, df_name)
     r_data[[df_name]][, colnames(dat)] <- dat
   } else if (input$tr_change_type == "normalize") {
     cmd <- .normalize(input$dataset, vars = input$tr_vars, nzvar = input$tr_normalizer, .ext = input$tr_ext_nz, df_name)
@@ -1236,7 +1316,7 @@ observeEvent(input$tr_store, {
     r_data[[df_name]][, colnames(dat)] <- dat
   } else if (input$tr_change_type == "rename") {
     cmd <- .rename(input$dataset, input$tr_vars, input$tr_rename, df_name)
-    r_data[[df_name]] %<>% rename(!!! setNames(input$tr_vars, colnames(dat)))
+    r_data[[df_name]] %<>% dplyr::rename(!!! setNames(input$tr_vars, colnames(dat)))
   } else if (input$tr_change_type == "create") {
     cmd <- .create(input$dataset, cmd = input$tr_create, byvar = input$tr_vars, df_name)
     r_data[[df_name]][, colnames(dat)] <- dat

@@ -9,11 +9,14 @@ $(document).keydown(function(event) {
 
   // console.log(document.activeElement)
   if ($(".btn-success:visible" || ".shiny-bound-input:visible").is(":visible") &&
-       (event.metaKey || event.ctrlKey) && event.keyCode == 13) {
+       (event.metaKey || event.ctrlKey || event.shiftKey) && event.keyCode == 13) {
      $(".btn-success:visible" || ".shiny-bound-input:visible").click();
   } else if ($(".fa-edit:visible" || ".shiny-bound-input:visible").is(":visible") &&
        event.altKey && event.keyCode == 13) {
      $(".fa-edit:visible" || ".shiny-bound-input:visible").click();
+  } else if ($("#updateDescr").is(":visible") && (event.metaKey || event.ctrlKey) && event.keyCode == 13) {
+    $("#updateDescr").click();
+    event.preventDefault();
   } else if ($("#rmd_read_files").is(":visible") && (event.metaKey || event.ctrlKey) && event.shiftKey === false && event.keyCode == 79) {
     $("#rmd_read_files").click();
     event.preventDefault();
@@ -34,11 +37,23 @@ $(document).keydown(function(event) {
   } else if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.keyCode == 79) {
     document.getElementById("state_load").click();
     event.preventDefault();
+  } else if ($("#uploadfile").is(":visible") && (event.metaKey || event.ctrlKey) &&
+      event.shiftKey === false && event.keyCode == 79) {
+    $("#uploadfile").click();
+    event.preventDefault();
+  } else if ($("#man_save_data").is(":visible") && (event.metaKey || event.ctrlKey) &&
+     event.shiftKey === false && event.keyCode == 83) {
+    $("#man_save_data").click();
+    event.preventDefault();
   }
 
   // focusing in text (area) inputs
   if ($("#data_rename").is(":focus") && event.keyCode == 13) {
     $("#renameButton").click();
+  } else if ($("#url_csv").is(":focus") && event.keyCode == 13) {
+    $("#url_csv_load").click();
+  } else if ($("#url_rds").is(":focus") && event.keyCode == 13) {
+    $("#url_rds_load").click();
   } else if ($("#view_name").is(":focus") && event.keyCode == 13) {
     $("#view_store").click();
   } else if ($("#pvt_name").is(":focus") && event.keyCode == 13) {

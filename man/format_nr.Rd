@@ -4,8 +4,7 @@
 \alias{format_nr}
 \title{Format a number with a specified number of decimal places, thousand sep, and a symbol}
 \usage{
-format_nr(x, sym = "", dec = 2, perc = FALSE, mark = ",",
-  na.rm = TRUE, ...)
+format_nr(x, sym = "", dec = 2, perc = FALSE, mark = ",", na.rm = TRUE, ...)
 }
 \arguments{
 \item{x}{Number or vector}
@@ -39,5 +38,4 @@ format_nr(c(1, 1.9, 1.008, 1.00))
 format_nr(c(1, 1.9, 1.008, 1.00), drop0trailing = TRUE)
 format_nr(NA)
 format_nr(NULL)
-
 }

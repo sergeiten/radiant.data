@@ -4,8 +4,14 @@
 \alias{read_files}
 \title{Generate code to read a file}
 \usage{
-read_files(path, pdir = "", type = "rmd", to = "",
-  clipboard = TRUE, radiant = FALSE)
+read_files(
+  path,
+  pdir = "",
+  type = "rmd",
+  to = "",
+  clipboard = TRUE,
+  radiant = FALSE
+)
 }
 \arguments{
 \item{path}{Path to file. If empty, a file browser will be opened}
@@ -28,6 +34,6 @@ Return code to read a file at the specified path. Will open a file browser if no
 }
 \examples{
 if (interactive()) {
-read_files(clipboard = FALSE)
+  read_files(clipboard = FALSE)
 }
 }

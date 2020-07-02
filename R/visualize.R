@@ -31,7 +31,8 @@
 #' @param ylim Set limit for y-axis (e.g., c(0, 1))
 #' @param data_filter Expression used to filter the dataset. This should be a string (e.g., "price > 10000")
 #' @param shiny Logical (TRUE, FALSE) to indicate if the function call originate inside a shiny app
-#' @param custom Logical (TRUE, FALSE) to indicate if ggplot object (or list of ggplot objects) should be returned. This option can be used to customize plots (e.g., add a title, change x and y labels, etc.). See examples and \url{http://docs.ggplot2.org} for options.
+#' @param custom Logical (TRUE, FALSE) to indicate if ggplot object (or list of ggplot objects) should be returned. This option can be used to customize plots (e.g., add a title, change x and y labels, etc.). See examples and \url{https://ggplot2.tidyverse.org} for options.
+#' @param envir Environment to extract data from
 #'
 #' @return Generated plots
 #'
@@ -48,7 +49,7 @@
 #' visualize(diamonds, yvar = "price", xvar = "carat", type = "scatter", custom = TRUE) +
 #'   labs(title = "A scatterplot", x = "price in $")
 #' visualize(diamonds, xvar = "price:carat", custom = TRUE) %>%
-#'   gridExtra::grid.arrange(grobs = ., top = "Histograms", ncol = 2)
+#'   wrap_plots(ncol = 2) + plot_annotation(title = "Histograms")
 #' visualize(diamonds, xvar = "cut", yvar = "price", type = "bar",
 #'   facet_row = "cut", fill = "cut")
 #'
@@ -61,7 +62,7 @@ visualize <- function(
   bins = 10, smooth = 1, fun = "mean", check = "", axes = "",
   alpha = 0.5, theme = "theme_gray", base_size = 11, base_family = "",
   labs = list(), xlim = NULL, ylim = NULL, data_filter = "",
-  shiny = FALSE, custom = FALSE
+  shiny = FALSE, custom = FALSE, envir = parent.frame()
 ) {
 
   ## inspired by Joe Cheng's ggplot2 browser app http://www.youtube.com/watch?feature=player_embedded&v=o2B5yJeEl1A#!
@@ -127,7 +128,7 @@ visualize <- function(
 
   ## so you can also pass-in a data.frame
   df_name <- if (is_string(dataset)) dataset else deparse(substitute(dataset))
-  dataset <- get_data(dataset, vars, filt = data_filter)
+  dataset <- get_data(dataset, vars, filt = data_filter, envir = envir)
 
   if (type == "scatter" && !is_empty(nrobs)) {
     nrobs <- as.integer(nrobs)
@@ -150,12 +151,12 @@ visualize <- function(
   isChar <- dc == "character"
   if (sum(isChar) > 0) {
     if (type == "density") {
-      dataset[, isChar] <- select(dataset, which(isChar)) %>% mutate_all(funs(as_numeric))
+      dataset[, isChar] <- select(dataset, which(isChar)) %>% mutate_all(as_numeric)
       if ("character" %in% get_class(select(dataset, which(isChar)))) {
         return("Character variable(s) were not converted to numeric for plotting.\nTo use these variables in a plot convert them to numeric\nvariables (or factors) in the Data > Transform tab")
       }
     } else {
-      dataset[, isChar] <- select(dataset, which(isChar)) %>% mutate_all(funs(as_factor))
+      dataset[, isChar] <- select(dataset, which(isChar)) %>% mutate_all(as_factor)
       nrlev <- sapply(dataset, function(x) if (is.factor(x)) length(levels(x)) else 0)
       if (max(nrlev) > 500) {
         return("Character variable(s) were not converted to factors for plotting.\nTo use these variable in a plot convert them to factors\n(or numeric variables) in the Data > Transform tab")
@@ -175,13 +176,47 @@ visualize <- function(
     }
   }
 
-  ## 1 of first level of factor, else 0
+  ## Determine if you want to use the first level of factor or not
   if (type == "bar") {
     isFctY <- "factor" == dc & names(dc) %in% yvar
     if (sum(isFctY)) {
-      levs <- sapply(dataset[, isFctY, drop = FALSE], function(x) levels(x)[1])
+      levs_org <- sapply(dataset[, isFctY, drop = FALSE], function(x) levels(x)[1])
+      levs <- c()
+      fixer_first <- function(x) {
+        x_num <- sshhr(as.integer(as.character(x)))
+        if (length(na.omit(x_num)) == 0) {
+          lx <- levels(x)
+          x <- as_integer(x == lx[1])
+          levs <<- c(levs, lx[1])
+        } else {
+          x <- x_num
+          levs <<- c(levs, NA)
+        }
+        x
+      }
+      fixer <- function(x) {
+        x_num <- sshhr(as.integer(as.character(x)))
+        if (length(na.omit(x_num)) == 0) {
+          lx <- levels(x)
+          x <- as_integer(x)
+          levs <<- c(levs, lx[1])
+        } else {
+          x <- x_num
+          levs <<- c(levs, NA)
+        }
+        x
+      }
+      if (fun %in% c("mean", "sum", "sd", "var", "sd", "se", "me", "cv", "prop", "varprop", "sdprop", "seprop", "meprop", "varpop", "sepop")) {
+        mfun <- fixer_first
+      } else if (fun %in% c("median", "min", "max", "p01", "p025", "p05", "p10", "p25", "p50", "p75", "p90", "p95", "p975", "p99", "skew", "kurtosi")) {
+        mfun <- fixer
+      } else {
+        mfun <- function(x) { levs <<- c(levs, NA); x}
+      }
+
       dataset[, isFctY] <- select(dataset, which(isFctY)) %>%
-        mutate_all(funs(as.integer(. == levels(.)[1])))
+        mutate_all(mfun)
+      names(levs) <- names(levs_org)
       dc[isFctY] <- "integer"
     }
   }
@@ -202,7 +237,7 @@ visualize <- function(
       return("'Log X' is only meaningful for X-variables of type integer or numeric")
     }
     to_log <- (dc[xvar] %in% c("integer", "numeric")) %>% xvar[.]
-    dataset[, to_log] <- select_at(dataset, .vars = to_log) %>% mutate_all(funs(log_trans))
+    dataset <- mutate_at(dataset, .vars = to_log, .funs = log_trans)
   }
 
   if ("log_y" %in% axes) {
@@ -210,7 +245,7 @@ visualize <- function(
       return("'Log Y' is only meaningful for Y-variables of type integer or numeric")
     }
     to_log <- (dc[yvar] %in% c("integer", "numeric")) %>% yvar[.]
-    dataset[, to_log] <- select_at(dataset, .vars = to_log) %>% mutate_all(funs(log_trans))
+    dataset <- mutate_at(dataset, .vars = to_log, .funs = log_trans)
   }
 
   ## combining Y-variables if needed
@@ -289,9 +324,9 @@ visualize <- function(
     itt <- 1
     if ("jitter" %in% check) {
       if (color == "none") {
-        gs <- geom_jitter(alpha = alpha, color = pointcol, position = position_jitter(width = 0.4, height = 0.05))
+        gs <- geom_jitter(alpha = alpha, color = pointcol, position = position_jitter(width = 0.4, height = 0.0))
       } else {
-        gs <- geom_jitter(alpha = alpha, position = position_jitter(width = 0.4, height = 0.05))
+        gs <- geom_jitter(alpha = alpha, position = position_jitter(width = 0.4, height = 0.0))
       }
       check <- sub("jitter", "", check)
     } else {
@@ -476,7 +511,7 @@ visualize <- function(
           if ("flip" %in% axes) {
             tmp <- arrange_at(ungroup(tmp), .vars = j)
           } else {
-            tmp <- arrange_at(ungroup(tmp), .vars = j, .funs = funs(desc(.)))
+            tmp <- arrange_at(ungroup(tmp), .vars = j, .funs = desc)
           }
           tmp[[i]] %<>% factor(., levels = unique(.))
         }
@@ -497,7 +532,7 @@ visualize <- function(
 
         if (dc[i] %in% c("factor", "integer", "date") && nrow(tmp) < nrow(dataset)) {
           if (exists("levs")) {
-            if (j %in% names(levs)) {
+            if (j %in% names(levs) && !is.na(levs[j])) {
               plot_list[[itt]]$labels$y %<>% paste0(., " (", fun, " {", levs[j], "})")
             } else {
               plot_list[[itt]]$labels$y %<>% paste0(., " (", fun, ")")
@@ -576,7 +611,7 @@ visualize <- function(
   if ("jitter" %in% check) {
     for (i in 1:length(plot_list))
       plot_list[[i]] <- plot_list[[i]] +
-        geom_jitter(alpha = alpha, position = position_jitter(width = 0.4, height = 0.05))
+        geom_jitter(alpha = alpha, position = position_jitter(width = 0.4, height = 0.0))
   }
 
   if ("line" %in% check) {
@@ -619,15 +654,11 @@ visualize <- function(
   }
 
   if (custom) {
-    if (length(plot_list) == 1) {
-      return(plot_list[[1]])
-    } else {
-      return(plot_list)
-    }
+    if (length(plot_list) == 1) plot_list[[1]] else plot_list
+  } else {
+    patchwork::wrap_plots(plot_list, ncol = min(length(plot_list), 2)) %>%
+      {if (shiny) . else print(.)}
   }
-
-  sshhr(gridExtra::grid.arrange(grobs = plot_list, ncol = min(length(plot_list), 2))) %>%
-    {if (shiny) . else print(.)}
 }
 
 #' Create a qscatter plot similar to Stata
@@ -655,7 +686,7 @@ qscatter <- function(dataset, xvar, yvar, lev = "", fun = "mean", bins = 20) {
   } else {
     lev <- ""
   }
-  mutate_at(dataset, .vars = xvar, .funs = funs(bins = radiant.data::xtile(., bins))) %>%
+  mutate_at(dataset, .vars = xvar, .funs = list(bins = ~ radiant.data::xtile(., bins))) %>%
     group_by(bins) %>%
     summarize_at(.vars = c(xvar, yvar), .funs = fun) %>%
     ggplot(aes_string(x = xvar, y = yvar)) +

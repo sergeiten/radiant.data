@@ -28,7 +28,7 @@ if (rstudioapi::isAvailable()) {
 }
 
 ## can still save report, code, and data without permission to run code
-if (!getOption("radiant.report")) {
+if (!isTRUE(getOption("radiant.report"))) {
   r_save_type <- "R"
 }
 
@@ -230,18 +230,21 @@ output$report_r <- renderUI({
     ),
     shinyAce::aceEditor(
       "r_edit",
-      selectionId = "r_edit_selection",
+      selectionId = "selection",
       mode = "r",
       theme = getOption("radiant.ace_theme", default = "tomorrow"),
       wordWrap = TRUE,
+      debounce = 0,
       height = "auto",
       value = state_init("r_edit", r_example) %>% fix_smart(),
+      placeholder = "Enter R-code for analysis here and press the Knit report button to run it.\nClick the ? icon on the top left of your screen for more information",
       vimKeyBinding = getOption("radiant.ace_vim.keys", default = FALSE),
-      hotkeys = list(r_hotkey = list(win = "CTRL-ENTER", mac = "CMD-ENTER")),
+      code_hotkeys = list("r", list(hotkey = list(win = "CTRL-ENTER|SHIFT-ENTER", mac = "CMD-ENTER|SHIFT-ENTER"))),
       tabSize = getOption("radiant.ace_tabSize", 2),
       useSoftTabs = getOption("radiant.ace_useSoftTabs", TRUE),
       showInvisibles = getOption("radiant.ace_showInvisibles", FALSE),
-      autoComplete = getOption("radiant.ace_autoComplete", "live"),
+      autoComplete = getOption("radiant.ace_autoComplete", "enable"),
+      autoCompleters = c("static", "rlang"),
       autoCompleteList = isolate(radiant_auto_complete())
     ),
     htmlOutput("r_knitted"),
@@ -249,12 +252,17 @@ output$report_r <- renderUI({
   )
 })
 
+radiant_r_annotater <- shinyAce::aceAnnotate("r_edit")
+radiant_r_tooltip <- shinyAce::aceTooltip("r_edit")
+radiant_r_ac <- shinyAce::aceAutocomplete("r_edit")
+
 ## auto completion of available R functions, datasets, and variables
 observe({
+  ## don't need to run until report generated
   req(report_r$report > 1)
   shinyAce::updateAceEditor(
     session, "r_edit",
-    autoCompleters = c("static", "text"),
+    autoCompleters = c("static", "rlang"),
     autoCompleteList = radiant_auto_complete()
   )
 })
@@ -271,7 +279,7 @@ observeEvent(input$r_clear, {
 })
 
 observe({
-  input$r_hotkey
+  input$r_edit_hotkey
   if (!is.null(input$r_knit)) {
     isolate({
       report_r$report <- report_r$report + 1
@@ -339,8 +347,8 @@ output$r_knitted <- renderUI({
         } else if (!is_empty(input$r_edit)) {
           if (!is_empty(input$r_edit_selection, "")) {
             report <- input$r_edit_selection
-          } else if (!is_empty(input$r_hotkey$line, "") && report_r$knit_button == 0) {
-            report <- input$r_hotkey$line
+          } else if (!is_empty(input$r_edit_hotkey$line, "") && report_r$knit_button == 0) {
+            report <- input$r_edit_hotkey$line
           } else {
             report <- input$r_edit
             ## hack to allow processing current line

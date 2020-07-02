@@ -6,11 +6,27 @@ suppressWarnings(
   )
 )
 
+# options(shiny.trace = TRUE)
+# options(radiant.autosave = c(1, 5))
+
 ## set volumes if sf_volumes was preset (e.g., on a server) or
 ## we are running in Rstudio or if we are running locally
 if (isTRUE(getOption("radiant.sf_volumes", "") != "") ||
+    isTRUE(getOption("radiant.shinyFiles", FALSE)) ||
     isTRUE(Sys.getenv("RSTUDIO") != "") ||
     isTRUE(Sys.getenv("SHINY_PORT") == "")) {
+
+  if (isTRUE(getOption("radiant.sf_volumes", "") != "")) {
+    sf_volumes <- getOption("radiant.sf_volumes")
+    if (length(names(sf_volumes)) == 0) {
+      warning("\nOption radiant.sf_volumes should be a named vector set in .Rprofile\n\n")
+      options(radiant.sf_volumes = "")
+    } else if (any(sapply(sf_volumes, function(x) !dir.exists(x)))) {
+      warning("\nOne or more directories listed in option radiant.sf_volumes do not exists. Please fix the option in .Rprofile and restart radiant.\n\n")
+      options(radiant.sf_volumes = "")
+    }
+    rm(sf_volumes)
+  }
 
   if (isTRUE(getOption("radiant.sf_volumes", "") == "")) {
     sf_volumes <- c(Home = radiant.data::find_home())
@@ -93,19 +109,18 @@ init_data <- function(env = r_data) {
   ## that needs to be reactive
   r_info <- reactiveValues()
 
-  #df_names <- getOption("radiant.init.data", default = c("diamonds", "titanic"))
-  #df_names <- dir(path = "./data", pattern = "(.*?).csv")
+  strip_ext <- function(x) sub(paste0("\\.", tools::file_ext(x), "$"), "", x)
+  datasetlist <- c()
+  # df_names <- getOption("radiant.init.data")
   df_names <- getOption("radiant.init.data", default = c("diamonds", "titanic", "data3", "HN16_17_all_org_analysis11", "data_3_new", "DEP0_p4_LD"))
-
+  if (length(df_names) == 0) df_names <- c("diamonds", "titanic")
   for (dn in df_names) {
-    f <- paste0("./data/", dn)
-
-    if (file.exists(f)) {
-      #df <- load(dn) %>% get()
-      df <- read.csv(file = f, head = TRUE, sep = ",")
-      #dn <- basename(dn) %>%
-      #  {gsub(paste0(".", tools::file_ext(.)), "", ., fixed = TRUE)}
-      dn <- basename(f)
+    if (file.exists(dn)) {
+      df <- load(dn) %>% get()
+      if (!inherits(df, "data.frame")) next  # only keep data.frames
+      dn_path <- dn
+      dn <- basename(dn) %>% strip_ext()
+      r_info[[paste0(dn, "_lcmd")]] <- glue::glue('{dn} <- load("{dn_path}") %>% get()\nregister("{dn}")')
     } else {
       df <- data(list = dn, package = "radiant.data", envir = environment()) %>% get()
       r_info[[paste0(dn, "_lcmd")]] <- glue::glue('{dn} <- data({dn}, package = "radiant.data", envir = environment()) %>% get()\nregister("{dn}")')
@@ -115,8 +130,9 @@ init_data <- function(env = r_data) {
       makeReactiveBinding(dn, env = env)
     }
     r_info[[paste0(dn, "_descr")]] <- attr(df, "description")
+    datasetlist <- c(datasetlist, dn)
   }
-  r_info[["datasetlist"]] <- basename(df_names)
+  r_info[["datasetlist"]] <- datasetlist
   r_info[["url"]] <- NULL
   r_info
 }
@@ -149,13 +165,16 @@ options(radiant.path.data =
 )
 
 ## import required functions and packages
-options(radiant.from.package = TRUE)
 ## if radiant.data is not in search main function from dplyr etc. won't be available
-if (!"package:radiant.data" %in% search()) {
+if (!"package:radiant.data" %in% search() &&
+    # isTRUE(Sys.getenv("SHINY_PORT") == "") &&
+    isTRUE(getOption("radiant.development")) &&
+    getOption("radiant.path.data") == "..") {
   import_fs("radiant.data", libs = c("magrittr", "ggplot2", "lubridate", "tidyr", "dplyr", "broom", "tibble", "glue"))
-  if (getOption("radiant.path.data") == "..") {
-    options(radiant.from.package = FALSE)
-  }
+  options(radiant.from.package = FALSE)
+} else {
+  options(radiant.from.package = TRUE)
+  library(radiant.data)
 }
 
 ## basic options when run on server
@@ -173,12 +192,13 @@ options(dctrl = if (getRversion() > "3.4.4") c("keepNA", "niceNames") else "keep
 options(
   radiant.functions = list(
     "n_obs" = "n_obs", "n_missing" = "n_missing", "n_distinct" = "n_distinct",
-    "mean" = "mean", "median" = "median", "min" = "min", "max" = "max",
-    "sum" = "sum", "var" = "var", "sd" = "sd", "se" = "se", "cv" = "cv",
+    "mean" = "mean", "median" = "median", "modal" = "modal", "min" = "min", "max" = "max",
+    "sum" = "sum", "var" = "var", "sd" = "sd", "se" = "se", "me" = "me", "cv" = "cv",
     "prop" = "prop", "varprop" = "varprop", "sdprop" = "sdprop", "seprop" = "seprop",
-    "varpop" = "varpop", "sdpop" = "sdpop", "1%" = "p01", "2.5%" = "p025", "5%" = "p05",
-    "10%" = "p10", "25%" = "p25", "75%" = "p75", "90%" = "p90", "95%" = "p95",
-    "97.5%" = "p975", "99%" = "p99", "skew" = "skew", "kurtosis" = "kurtosi"
+    "meprop" = "meprop", "varpop" = "varpop", "sdpop" = "sdpop", "1%" = "p01",
+    "2.5%" = "p025", "5%" = "p05", "10%" = "p10", "25%" = "p25", "75%" = "p75",
+    "90%" = "p90", "95%" = "p95", "97.5%" = "p975", "99%" = "p99", "skew" = "skew",
+    "kurtosis" = "kurtosi"
   )
 )
 
@@ -193,14 +213,15 @@ knitr::opts_knit$set(progress = TRUE)
 knitr::opts_chunk$set(
   echo = FALSE,
   comment = NA,
+  # fig.cap = "",
   cache = FALSE,
   message = FALSE,
   warning = FALSE,
   error = TRUE,
   fig.path = normalizePath(tempdir(), winslash = "/"),
+  dpi = 144,
+  screenshot.force = FALSE
   # dev = "svg" ## too slow with big scatter plots on server-side
-  dpi = 144
-  # screenshot.force = FALSE,
 )
 
 ## environment to hold session information
@@ -283,6 +304,8 @@ help_menu <- function(hlp) {
       tags$script(src = "js/returnTextInputBinding.js"),
       tags$script(src = "js/video_reset.js"),
       tags$script(src = "js/run_return.js"),
+      # tags$script('TogetherJSConfig_hubBase = "https://togetherjs-hub.glitch.me/"; TogetherJSConfig_cloneClicks = true;'),
+      # tags$script(src = "https://togetherjs.com/togetherjs-min.js"),
       # tags$script(src = "js/message-handler.js"),
       # tags$script(src = "js/draggable_modal.js"),
       tags$link(rel = "stylesheet", type = "text/css", href = "www/style.css"),
@@ -292,8 +315,8 @@ help_menu <- function(hlp) {
 }
 
 ## copy-right text
-options(radiant.help.cc = "&copy; Vincent Nijs (2018) <a rel='license' href='http://creativecommons.org/licenses/by-nc-sa/4.0/' target='_blank'><img alt='Creative Commons License' style='border-width:0' src ='imgs/by-nc-sa.png' /></a></br>")
-options(radiant.help.cc.sa = "&copy; Vincent Nijs (2018) <a rel='license' href='http://creativecommons.org/licenses/by-sa/4.0/' target='_blank'><img alt='Creative Commons License' style='border-width:0' src ='imgs/by-sa.png' /></a></br>")
+options(radiant.help.cc = "&copy; Vincent Nijs (2019) <a rel='license' href='http://creativecommons.org/licenses/by-nc-sa/4.0/' target='_blank'><img alt='Creative Commons License' style='border-width:0' src ='imgs/by-nc-sa.png' /></a></br>")
+options(radiant.help.cc.sa = "&copy; Vincent Nijs (2019) <a rel='license' href='http://creativecommons.org/licenses/by-sa/4.0/' target='_blank'><img alt='Creative Commons License' style='border-width:0' src ='imgs/by-sa.png' /></a></br>")
 
 #####################################
 ## url processing to share results
@@ -358,12 +381,18 @@ rm(tmp, radiant.versions)
 
 navbar_proj <- function(navbar) {
   pdir <- radiant.data::find_project(mess = FALSE)
-  options(radiant.project_dir = if (radiant.data::is_empty(pdir)) NULL else pdir)
-  proj <- if (radiant.data::is_empty(pdir)) {
-    "Project: (None)"
+  if (radiant.data::is_empty(pdir)) {
+    if (getOption("radiant.shinyFiles", FALSE) && !radiant.data::is_empty(getOption("radiant.sf_volumes", ""))) {
+      proj <- paste0("Base dir: ", names(getOption("radiant.sf_volumes"))[1])
+    } else {
+      proj <- "Project: (None)"
+    }
+    options(radiant.project_dir = NULL)
   } else {
-    paste0("Project: ", basename(pdir)) %>%
+    proj <- paste0("Project: ", basename(pdir)) %>%
       {if(nchar(.) > 35) paste0(strtrim(., 31), " ...") else .}
+    options(radiant.project_dir = pdir)
+    options(radiant.launch_dir = pdir)
   }
   proj <- tags$span(class = "nav navbar-brand navbar-right", proj)
   ## based on: https://stackoverflow.com/a/40755608/1974918
@@ -376,6 +405,19 @@ navbar_proj <- function(navbar) {
 }
 
 if (getOption("radiant.shinyFiles", FALSE)) {
+  if (!radiant.data::is_empty(getOption("radiant.sf_volumes", "")) && radiant.data::is_empty(getOption("radiant.project_dir"))) {
+    launch_dir <- getOption("radiant.launch_dir", default = radiant.data::find_home())
+    if (!launch_dir %in% getOption("radiant.sf_volumes", "")) {
+      sf_volumes <- c(setNames(launch_dir, basename(launch_dir)), getOption("radiant.sf_volumes", ""))
+      options(radiant.sf_volumes = sf_volumes)
+      rm(sf_volumes)
+    } else if (!launch_dir == getOption("radiant.sf_volumes", "")[1]) {
+      dir_ind <- which(getOption("radiant.sf_volumes") == launch_dir)[1]
+      options(radiant.sf_volumes = c(getOption("radiant.sf_volumes")[dir_ind], getOption("radiant.sf_volumes")[-dir_ind]))
+      rm(dir_ind)
+    }
+    rm(launch_dir)
+  }
   if (radiant.data::is_empty(getOption("radiant.launch_dir"))) {
     if (radiant.data::is_empty(getOption("radiant.project_dir"))) {
       options(radiant.launch_dir = radiant.data::find_home())
@@ -387,6 +429,8 @@ if (getOption("radiant.shinyFiles", FALSE)) {
 
   if (radiant.data::is_empty(getOption("radiant.project_dir"))) {
     options(radiant.project_dir = getOption("radiant.launch_dir"))
+  } else {
+    options(radiant.launch_dir = getOption("radiant.project_dir"))
   }
 
   dbdir <- try(radiant.data::find_dropbox(), silent = TRUE)
@@ -428,6 +472,23 @@ knit_print.data.frame <- function(x, ...) {
 #   knitr::asis_output(res)
 # }
 
+# registerS3method("knitknit_print", "datatables", knit_print.datatables)
+# knit_print.datatables <- function(x, ...) {
+#   # res <- shiny::knit_print.shiny.render.function(
+#   # shiny::knit_print.shiny.render.function(
+#     DT::renderDataTable(x)
+#   # )
+#   # knitr::asis_output(res)
+# }
+
+# knit_print.datatables <- function(x, ...) {
+#   # shiny::knit_print.shiny.render.function(
+#   res <- shiny::knit_print.shiny.render.function(
+#     DT::renderDataTable(x)
+#   )
+#   knitr::asis_output(res)
+# }
+
 options(
   radiant.nav_ui =
     list(
@@ -463,6 +524,12 @@ options(
         tabPanel(actionLink("state_save_link", "Save radiant state file", icon = icon("download"))),
         tabPanel(actionLink("state_load_link", "Load radiant state file", icon = icon("upload"))),
         tabPanel(actionLink("state_share", "Share radiant state", icon = icon("share"))),
+        # tabPanel(
+        #   actionLink(
+        #     "colab_radiant", "Collaborate", icon = icon("user-plus"),
+        #     onclick = "TogetherJS(this); return false;"
+        #   )
+        # ),
         tabPanel("View radiant state", uiOutput("state_view"), icon = icon("user")),
         "----", "Local",
         tabPanel(downloadLink("state_download", tagList(icon("download"), "Download radiant state file"))),

@@ -72,7 +72,6 @@ reference:
     - qscatter
     - ggplotly
     - subplot
-    - print.gtable
 - title: Data > Pivot
   desc: Functions used with Data > Pivot
   contents:
@@ -123,6 +122,10 @@ reference:
     - n_missing
     - n_obs
     - normalize
+    - make_vec
+    - me
+    - meprop
+    - modal
     - p025
     - p05
     - p10
@@ -195,6 +198,7 @@ reference:
     - indexr
     - install_webshot
     - iterms
+    - qterms
     - set_attr
     - sig_stars
     - sshh
@@ -204,6 +208,7 @@ reference:
   contents:
     - launch
     - radiant.data
+    - radiant.data_url
     - radiant.data_viewer
     - radiant.data_window
 - title: Re-exported
